@@ -2,6 +2,7 @@
 
 #include <GLUT/GLUT.h>
 #include <OpenGL/gl.h>
+#include <math.h>
 #include <deque>
 using namespace std;
 
@@ -15,35 +16,43 @@ struct v3d{
         return *this;
     }
     
-    v3d operator +(const v3d& a) {
+    v3d operator +(const v3d& a) const {
         return {x+a.x, y+a.y, z+a.z};
     }
     
-    v3d operator -(const v3d& a) {
+    v3d operator -(const v3d& a) const {
         return {x-a.x, y-a.y, z-a.z};
     }
     
-    v3d operator *(const double& a) {
+    v3d operator *(const v3d& a) const {
+        return {x*a.x, y*a.y, z*a.z};
+    }
+    
+    v3d operator *(const double& a) const {
         return {x*a, y*a, z*a};
     }
     
-    v3d operator /(const double& a) {
+    v3d operator /(const double& a) const {
         return {x/a, y/a, z/a};
     }
 };
 
-v3d ball, ballv, gravity, wind; //The position of the ball - you can set this in your code
-double ballm, windc, cr, mu;    // ball mass, wind coefficient, coefficient of restistuion, coefficient of friction
+const int steps_per_frame = 100;
+
+v3d ball[steps_per_frame], ballv, gravity, wind; //The position of the ball - you can set this in your code
+double mass, windc, cr, mu;    // ball mass, wind coefficient, coefficient of restistuion, coefficient of friction
 int radius;
+
+int reduceWiggle;
+enum restFlag { neither, low, high} xrest, yrest, zrest;
 
 double boxxl, boxxh, boxyl, boxyh, boxzl, boxzh;  // The low and high x, y, z values for the box sides
 
 int rotateon;
 
-double xmin, xmax, ymin, ymax, zmin, zmax;
-double maxdiff;
-double fps;
-int steps_per_frame;
+//double xmin, xmax, ymin, ymax, zmin, zmax;
+//double maxdiff;
+double fps, timestep;
 
 deque<v3d> ball_path;
 unsigned int path_length;
@@ -67,7 +76,7 @@ void display(void) {
     GLfloat box_diffuse[] = { 0.7, 0.7, 0.7 };
     GLfloat box_specular[] = { 0.1, 0.1, 0.1 };
     GLfloat box_shininess[] = { 1.0 };
-    GLfloat ball_ambient[] = { 0.4, 0.0, 0.0 };
+    GLfloat ball_ambient[] = { 0.4, 0.3, 0.0 };
     GLfloat ball_diffuse[] = { 0.3, 0.0, 0.0 };
     GLfloat ball_specular[] = { 0.3, 0.3, 0.3 };
     GLfloat ball_shininess[] = { 10.0 };
@@ -155,10 +164,12 @@ void display(void) {
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, ball_diffuse);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, ball_specular);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, ball_shininess);
-    glPushMatrix();
-    glTranslatef(ball.x, ball.y, ball.z);
-    glutSolidSphere(radius, 10, 10);
-    glPopMatrix();
+    for (int i = 0; i < steps_per_frame; i++) {
+        glPushMatrix();
+        glTranslatef(ball[i].x, ball[i].y, ball[i].z);
+        glutSolidSphere(radius, 10, 10);
+        glPopMatrix();
+    }
     
     glPopMatrix();
     glutSwapBuffers();
@@ -196,24 +207,34 @@ void init(void) {
     glLightfv(GL_LIGHT1, GL_DIFFUSE, light1color);
     glLightfv(GL_LIGHT1, GL_SPECULAR, light1color);
     
-    //Initialize ball position and velocity
+    //Initialize ball position, velocity, gravity, and wind
     radius = 5;
-    ball = { 0.0, 0.0, 0.0};
-    ballv = { 120.0, 400.0, 200.0};
+    for (int i = 0; i < steps_per_frame; i++)
+        ball[i] = { 0.0, 0.0, 0.0};
+    ballv = { 500.0, 400.0, 120.0};
     gravity = { 0.0, -196.2, 0.0};
-    wind = { -80.0, 0.0, 0.0};
+    wind = { 0.0, 0.0, -80.0};
     
+    // initialize the ball trail
     ball_path.clear();
-    ball_path.push_back(ball);
+    ball_path.push_back(ball[steps_per_frame-1]);
     path_length = 5000;
     
-    ballm = 3.0;
+    // resting flags
+    reduceWiggle = true;
+    xrest = neither;
+    yrest = neither;
+    zrest = neither;
+    
+    // set sphere properties
+    mass = 3.0;
     windc = 0.2;
     cr = 0.95;
+    mu = 0.1;
     
-    
+    // somulation timing
     fps = 60.0;
-    steps_per_frame =  10;
+    timestep = 1.0/(fps * steps_per_frame);
     
     //Initialize box boundaries
     boxxl = -100;
@@ -235,47 +256,47 @@ void reshapeFunc(GLint newWidth, GLint newHeight) {
 
 enum surface {none, left, right, bottom, top, front, back};
 
-surface collision(v3d newpos, double& lowest_f) {
+surface collision(const v3d newpos, const v3d last, double& lowest_f) {
     surface s = none;
     double current_f;
     lowest_f = 1.0;
     if (newpos.x < (-100.0 + radius)) {
-        current_f = (-100.0 + radius - ball.x)/(newpos.x - ball.x);
+        current_f = (-100.0 + radius - last.x)/(newpos.x - last.x);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = left;
         }
     }
     if (newpos.x > (100.0 - radius)) {
-        current_f = (100.0 - radius - ball.x)/(newpos.x - ball.x);
+        current_f = (100.0 - radius - last.x)/(newpos.x - last.x);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = right;
         }
     }
     if (newpos.y < (-100.0 + radius)) {
-        current_f = (-100.0 + radius - ball.y)/(newpos.y - ball.y);
+        current_f = (-100.0 + radius - last.y)/(newpos.y - last.y);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = bottom;
         }
     }
     if (newpos.y > (100.0 - radius)) {
-        current_f = (100.0 - radius - ball.y)/(newpos.y - ball.y);
+        current_f = (100.0 - radius - last.y)/(newpos.y - last.y);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = top;
         }
     }
     if (newpos.z < (-100.0 + radius)) {
-        current_f = (-100.0 + radius - ball.z)/(newpos.z - ball.z);
+        current_f = (-100.0 + radius - last.z)/(newpos.z - last.z);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = front;
         }
     }
     if (newpos.z > (100.0 - radius)) {
-        current_f = (100.0 - radius - ball.z)/(newpos.z - ball.z);
+        current_f = (100.0 - radius - last.z)/(newpos.z - last.z);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = back;
@@ -284,28 +305,74 @@ surface collision(v3d newpos, double& lowest_f) {
     return s;
 }
 
-v3d bounce(v3d velocity, surface side) {
-    double vx, vy, vz;
+double min(const double a, const double b) {
+    if (a < b)
+        return a;
+    return b;
+}
+
+double abs(const double a) {
+    if (a < 0.0)
+        return - a;
+    return a;
+}
+
+int signChange(const double a, const double b) {
+    if ((a + b) < 0 && a > 0)
+        return true;
+    if ((a + b) > 0 && a < 0)
+        return true;
+    return false;
+}
+
+v3d bounce(const v3d velocity, const v3d accel, const surface side) {
+    v3d deltav = accel * timestep;
+    double vx, vy, vz, vtangent, friction;
+    
     switch (side) {
         case left:
         case right:
             vx = - cr * velocity.x;
-            vy = velocity.y;
-            vz = velocity.z;
+            if (signChange(vx, deltav.x) && reduceWiggle) {
+                vx = 0.0;
+                xrest = (side == left)? low : high;
+            }
+            
+            vtangent = sqrt(velocity.y*velocity.y + velocity.z*velocity.z);
+            friction = 1.0 - min(mu * abs(velocity.x), vtangent)/vtangent;
+            
+            vy = velocity.y * friction;
+            vz = velocity.z * friction;
             break;
             
         case bottom:
         case top:
-            vx = velocity.x;
             vy = - cr * velocity.y;
-            vz = velocity.z;
+            if (signChange(vy, deltav.y) && reduceWiggle) {
+                vy = 0.0;
+                yrest = (side == bottom)? low : high;
+            }
+            
+            vtangent = sqrt(velocity.x*velocity.x + velocity.z*velocity.z);
+            friction = 1.0 - min(mu * abs(velocity.y), vtangent)/vtangent;
+
+            vx = velocity.x * friction;
+            vz = velocity.z * friction;
             break;
             
         case front:
         case back:
-            vx = velocity.x;
-            vy = velocity.y;
             vz = - cr * velocity.z;
+            if (signChange(vz, deltav.z) && reduceWiggle) {
+                vz = 0.0;
+                zrest = (side == front)? low : high;
+            }
+            
+            vtangent = sqrt(velocity.x*velocity.x + velocity.y*velocity.y);
+            friction = 1.0 - min(mu * abs(velocity.z), vtangent)/vtangent;
+
+            vx = velocity.x * friction;
+            vy = velocity.y * friction;
             break;
             
         default:
@@ -314,40 +381,74 @@ v3d bounce(v3d velocity, surface side) {
     return {vx, vy, vz};
 }
 
-void newFrame(int id) {
+double max(const double a, const double b) {
+    if (a > b)
+        return a;
+    return b;
+}
+
+v3d getAccel() {
+    v3d a = gravity + ((wind - ballv) * (windc/mass));
+    
+    if (reduceWiggle) {
+        if ((xrest == low && a.x < 0.0) || (xrest == high && a.x > 0.0)) {
+            a.x = 0.0;
+            a.y *= max(1-mu, 0.0);
+            a.z *= max(1-mu, 0.0);
+        } else if (xrest)
+            xrest = neither;
+        if ((yrest == low && a.y < 0.0) || (yrest == high && a.y > 0.0)) {
+            a.x *= max(1-mu, 0.0);
+            a.y = 0.0;
+            a.z *= max(1-mu, 0.0);
+        } else if (yrest)
+            yrest = neither;
+        if ((zrest == low && a.z < 0.0) || (zrest == high && a.z > 0.0)) {
+            a.x *= max(1-mu, 0.0);
+            a.y *= max(1-mu, 0.0);
+            a.z = 0.0;
+        } else if (zrest)
+            zrest = neither;
+    }
+
+    return a;
+}
+
+void newFrame(const int id) {
     glutTimerFunc(1000.0/fps, newFrame, 1);
     
-    double timestep = 1.0/(fps * steps_per_frame);
     double elapsed = 0.0;
     unsigned int step = 0;
+    v3d last_ball = ball[steps_per_frame-1];
     
     while (step < steps_per_frame) {
         double time_remaining = timestep;
         double t_current = time_remaining;
         
         while (time_remaining > 0.0) {
-            v3d accel = gravity + ((wind - ballv) * (windc/ballm));
+            v3d accel = getAccel();
             v3d newv = ballv + accel * t_current;
-            v3d newpos = ball + (ballv + newv)/2 * t_current;
+            v3d newpos = last_ball + (ballv + newv)/2 * t_current;
             
             double f;
             surface side;
-            if ((side = collision(newpos, f))) {
+            if ((side = collision(newpos, last_ball, f))) {
                 t_current = f*t_current;
-                newpos = ball + (ballv + newv)/2 * t_current;
-                newv = bounce(newv, side);
+                newpos = last_ball + (ballv + newv)/2 * t_current;
+                newv = bounce(newv, accel, side);
             }
             
             time_remaining -= t_current;
             ballv = newv;
-            ball = newpos;
+            ball[step] = newpos;
         }
         
+        last_ball = ball[step];
         step++;
         elapsed += timestep;
     }
     
-    ball_path.push_back(ball);
+    ball_path.push_back(last_ball);
     if (ball_path.size() >= path_length)
         ball_path.pop_front();
     
