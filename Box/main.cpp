@@ -1,42 +1,40 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 #include <GLUT/GLUT.h>
+#include <OpenGL/gl.h>
+#include <deque>
 using namespace std;
 
 struct v3d{
     double x,y,z;
     
-    v3d(double x = 0.0, double y = 0.0, double z = 0.0) {}
-    
     v3d& operator =(const v3d& a) {
         x = a.x;
         y = a.y;
+        z = a.z;
         return *this;
     }
     
     v3d operator +(const v3d& a) {
-        return v3d(x+a.x, y+a.y, z+a.z);
+        return {x+a.x, y+a.y, z+a.z};
     }
     
     v3d operator -(const v3d& a) {
-        return v3d(x-a.x, y-a.y, z-a.z);
-    }
-    
-    v3d operator *(const int& a) {
-        return v3d(x*a, y*a, z*a);
+        return {x-a.x, y-a.y, z-a.z};
     }
     
     v3d operator *(const double& a) {
-        return v3d(x*a, y*a, z*a);
+        return {x*a, y*a, z*a};
     }
     
     v3d operator /(const double& a) {
-        return v3d(x/a, y/a, z/a);
+        return {x/a, y/a, z/a};
     }
 };
 
-v3d ball, ballv, gravity, wind;  //The position of the ball - you can set this in your code
-double ballm, Fd;   // ball mass and wind force coefficient
+v3d ball, ballv, gravity, wind; //The position of the ball - you can set this in your code
+double ballm, windc, cr, mu;    // ball mass, wind coefficient, coefficient of restistuion, coefficient of friction
+int radius;
 
 double boxxl, boxxh, boxyl, boxyh, boxzl, boxzh;  // The low and high x, y, z values for the box sides
 
@@ -44,6 +42,11 @@ int rotateon;
 
 double xmin, xmax, ymin, ymax, zmin, zmax;
 double maxdiff;
+double fps;
+int steps_per_frame;
+
+deque<v3d> ball_path;
+unsigned int path_length;
 
 int lastx, lasty;
 int xchange, ychange;
@@ -59,6 +62,7 @@ void display(void) {
     GLfloat smallr0b[] = { 0.1, 0.0, 0.1 };
     GLfloat small0gb[] = { 0.0, 0.1, 0.1 };
     GLfloat smallrgb[] = { 0.1, 0.1, 0.1 };
+    GLfloat bigrgb[] = { 1.0, 1.0, 1.0 };
     
     GLfloat box_diffuse[] = { 0.7, 0.7, 0.7 };
     GLfloat box_specular[] = { 0.1, 0.1, 0.1 };
@@ -140,6 +144,12 @@ void display(void) {
     
     glEnd();
     
+    glBegin(GL_LINE_STRIP);
+    glMaterialfv(GL_FRONT, GL_AMBIENT, bigrgb);
+    for (deque<v3d>::iterator it = ball_path.begin(); it != ball_path.end(); it++)
+        glVertex3f(it->x, it->y, it->z);
+    glEnd();
+    
     //draw the ball
     glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, ball_ambient);
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, ball_diffuse);
@@ -147,7 +157,7 @@ void display(void) {
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, ball_shininess);
     glPushMatrix();
     glTranslatef(ball.x, ball.y, ball.z);
-    glutSolidSphere(5, 10, 10);
+    glutSolidSphere(radius, 10, 10);
     glPopMatrix();
     
     glPopMatrix();
@@ -187,13 +197,23 @@ void init(void) {
     glLightfv(GL_LIGHT1, GL_SPECULAR, light1color);
     
     //Initialize ball position and velocity
+    radius = 5;
     ball = { 0.0, 0.0, 0.0};
-    ballv = { 0.0, 0.0, 0.0};
-    gravity = { 0.0, 0.0, -9.81};
-    wind = { 0.0, 0.0, 0.0};
+    ballv = { 120.0, 400.0, 200.0};
+    gravity = { 0.0, -196.2, 0.0};
+    wind = { -80.0, 0.0, 0.0};
+    
+    ball_path.clear();
+    ball_path.push_back(ball);
+    path_length = 5000;
     
     ballm = 3.0;
-    Fd = 0.2;
+    windc = 0.2;
+    cr = 0.95;
+    
+    
+    fps = 60.0;
+    steps_per_frame =  10;
     
     //Initialize box boundaries
     boxxl = -100;
@@ -213,9 +233,125 @@ void reshapeFunc(GLint newWidth, GLint newHeight) {
     glutPostRedisplay();
 }
 
-int collision(v3d newx) {
+enum surface {none, left, right, bottom, top, front, back};
+
+surface collision(v3d newpos, double& lowest_f) {
+    surface s = none;
+    double current_f;
+    lowest_f = 1.0;
+    if (newpos.x < (-100.0 + radius)) {
+        current_f = (-100.0 + radius - ball.x)/(newpos.x - ball.x);
+        if (current_f < lowest_f){
+            lowest_f = current_f;
+            s = left;
+        }
+    }
+    if (newpos.x > (100.0 - radius)) {
+        current_f = (100.0 - radius - ball.x)/(newpos.x - ball.x);
+        if (current_f < lowest_f){
+            lowest_f = current_f;
+            s = right;
+        }
+    }
+    if (newpos.y < (-100.0 + radius)) {
+        current_f = (-100.0 + radius - ball.y)/(newpos.y - ball.y);
+        if (current_f < lowest_f){
+            lowest_f = current_f;
+            s = bottom;
+        }
+    }
+    if (newpos.y > (100.0 - radius)) {
+        current_f = (100.0 - radius - ball.y)/(newpos.y - ball.y);
+        if (current_f < lowest_f){
+            lowest_f = current_f;
+            s = top;
+        }
+    }
+    if (newpos.z < (-100.0 + radius)) {
+        current_f = (-100.0 + radius - ball.z)/(newpos.z - ball.z);
+        if (current_f < lowest_f){
+            lowest_f = current_f;
+            s = front;
+        }
+    }
+    if (newpos.z > (100.0 - radius)) {
+        current_f = (100.0 - radius - ball.z)/(newpos.z - ball.z);
+        if (current_f < lowest_f){
+            lowest_f = current_f;
+            s = back;
+        }
+    }
+    return s;
+}
+
+v3d bounce(v3d velocity, surface side) {
+    double vx, vy, vz;
+    switch (side) {
+        case left:
+        case right:
+            vx = - cr * velocity.x;
+            vy = velocity.y;
+            vz = velocity.z;
+            break;
+            
+        case bottom:
+        case top:
+            vx = velocity.x;
+            vy = - cr * velocity.y;
+            vz = velocity.z;
+            break;
+            
+        case front:
+        case back:
+            vx = velocity.x;
+            vy = velocity.y;
+            vz = - cr * velocity.z;
+            break;
+            
+        default:
+            break;
+    }
+    return {vx, vy, vz};
+}
+
+void newFrame(int id) {
+    glutTimerFunc(1000.0/fps, newFrame, 1);
     
-    return false;
+    double timestep = 1.0/(fps * steps_per_frame);
+    double elapsed = 0.0;
+    unsigned int step = 0;
+    
+    while (step < steps_per_frame) {
+        double time_remaining = timestep;
+        double t_current = time_remaining;
+        
+        while (time_remaining > 0.0) {
+            v3d accel = gravity + ((wind - ballv) * (windc/ballm));
+            v3d newv = ballv + accel * t_current;
+            v3d newpos = ball + (ballv + newv)/2 * t_current;
+            
+            double f;
+            surface side;
+            if ((side = collision(newpos, f))) {
+                t_current = f*t_current;
+                newpos = ball + (ballv + newv)/2 * t_current;
+                newv = bounce(newv, side);
+            }
+            
+            time_remaining -= t_current;
+            ballv = newv;
+            ball = newpos;
+        }
+        
+        step++;
+        elapsed += timestep;
+    }
+    
+    ball_path.push_back(ball);
+    if (ball_path.size() >= path_length)
+        ball_path.pop_front();
+    
+    glutPostRedisplay();
 }
 
 void rotateview(void) {
@@ -226,33 +362,6 @@ void rotateview(void) {
         spinup -= ychange / 250.0;
         if (spinup > 89.0) spinup = 89.0;
         if (spinup < -89.0) spinup = -89.0;
-    }
-    
-    // n is the timestep, t is current time, s is the “working” state
-    double h = 1/240;
-    unsigned int n = 0;
-    double t = 0, tmax = 2;
-    while (t < tmax) { // loop invariant: s is the state at time t
-        // Output state for timestep n here
-        double timestep_remain = h;
-        double timestep = timestep_remain; // We try to simulate a full timestep
-        while (timestep_remain > 0) {
-            v3d accel = gravity + ((wind - ballv) * (Fd/ballm));
-            v3d newv = ballv + accel * timestep;
-            v3d newx = ball + (ballv + newv)/2 * timestep;
-            
-            /*if (collision(newx)) {
-                // Calculate first collision and reintegrate
-                double f; // Equation 3.2
-                timestep = f*timestep;
-                //snew = Integrate(s, s′, timestep);
-                //snew = CollisionResponse(snew);
-            }*/
-            timestep_remain -= timestep;
-            ball = newx;
-        }
-        n++;
-        t = n*h;
     }
     
     glutPostRedisplay();
@@ -298,6 +407,7 @@ int main(int argc, char** argv) {
     glutDisplayFunc(display);
     glutMouseFunc(mouse);
     glutMotionFunc(motion);
+    glutTimerFunc(1000.0/fps, newFrame, 0);
     glutIdleFunc(rotateview);
     glutReshapeFunc(reshapeFunc);
     
