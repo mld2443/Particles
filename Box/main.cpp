@@ -3,7 +3,41 @@
 #include <GLUT/GLUT.h>
 using namespace std;
 
-double ballx, bally, ballz;  //The position of the ball - you can set this in your code
+struct v3d{
+    double x,y,z;
+    
+    v3d(double x = 0.0, double y = 0.0, double z = 0.0) {}
+    
+    v3d& operator =(const v3d& a) {
+        x = a.x;
+        y = a.y;
+        return *this;
+    }
+    
+    v3d operator +(const v3d& a) {
+        return v3d(x+a.x, y+a.y, z+a.z);
+    }
+    
+    v3d operator -(const v3d& a) {
+        return v3d(x-a.x, y-a.y, z-a.z);
+    }
+    
+    v3d operator *(const int& a) {
+        return v3d(x*a, y*a, z*a);
+    }
+    
+    v3d operator *(const double& a) {
+        return v3d(x*a, y*a, z*a);
+    }
+    
+    v3d operator /(const double& a) {
+        return v3d(x/a, y/a, z/a);
+    }
+};
+
+v3d ball, ballv, gravity, wind;  //The position of the ball - you can set this in your code
+double ballm, Fd;   // ball mass and wind force coefficient
+
 double boxxl, boxxh, boxyl, boxyh, boxzl, boxzh;  // The low and high x, y, z values for the box sides
 
 int rotateon;
@@ -16,8 +50,7 @@ int xchange, ychange;
 float spin = 0.0;
 float spinup = 0.0;
 
-void display(void)
-{
+void display(void) {
     GLfloat box_ambient[] = { 0.1, 0.1, 0.1 };
     GLfloat smallr00[] = { 0.1, 0.0, 0.0 };
     GLfloat small0g0[] = { 0.0, 0.1, 0.0 };
@@ -113,7 +146,7 @@ void display(void)
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, ball_specular);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, ball_shininess);
     glPushMatrix();
-    glTranslatef(ballx, bally, ballz);
+    glTranslatef(ball.x, ball.y, ball.z);
     glutSolidSphere(5, 10, 10);
     glPopMatrix();
     
@@ -121,8 +154,7 @@ void display(void)
     glutSwapBuffers();
 }
 
-void init(void)
-{
+void init(void) {
     glClearColor(0.0, 0.0, 0.0, 0.0);
     // Enable Z-buffering, backface culling, and lighting
     glEnable(GL_DEPTH_TEST);
@@ -154,8 +186,14 @@ void init(void)
     glLightfv(GL_LIGHT1, GL_DIFFUSE, light1color);
     glLightfv(GL_LIGHT1, GL_SPECULAR, light1color);
     
-    //Initialize ball position
-    ballx = 0.0; bally = 0.0; ballz = 0.0;
+    //Initialize ball position and velocity
+    ball = { 0.0, 0.0, 0.0};
+    ballv = { 0.0, 0.0, 0.0};
+    gravity = { 0.0, 0.0, -9.81};
+    wind = { 0.0, 0.0, 0.0};
+    
+    ballm = 3.0;
+    Fd = 0.2;
     
     //Initialize box boundaries
     boxxl = -100;
@@ -166,8 +204,7 @@ void init(void)
     boxzh = 100;
 }
 
-void reshapeFunc(GLint newWidth, GLint newHeight)
-{
+void reshapeFunc(GLint newWidth, GLint newHeight) {
     if (newWidth > newHeight) // Keep a square viewport
         glViewport((newWidth - newHeight) / 2, 0, newHeight, newHeight);
     else
@@ -176,8 +213,12 @@ void reshapeFunc(GLint newWidth, GLint newHeight)
     glutPostRedisplay();
 }
 
-void rotateview(void)
-{
+int collision(v3d newx) {
+    
+    return false;
+}
+
+void rotateview(void) {
     if (rotateon) {
         spin += xchange / 250.0;
         if (spin >= 360.0) spin -= 360.0;
@@ -186,11 +227,38 @@ void rotateview(void)
         if (spinup > 89.0) spinup = 89.0;
         if (spinup < -89.0) spinup = -89.0;
     }
+    
+    // n is the timestep, t is current time, s is the “working” state
+    double h = 1/240;
+    unsigned int n = 0;
+    double t = 0, tmax = 2;
+    while (t < tmax) { // loop invariant: s is the state at time t
+        // Output state for timestep n here
+        double timestep_remain = h;
+        double timestep = timestep_remain; // We try to simulate a full timestep
+        while (timestep_remain > 0) {
+            v3d accel = gravity + ((wind - ballv) * (Fd/ballm));
+            v3d newv = ballv + accel * timestep;
+            v3d newx = ball + (ballv + newv)/2 * timestep;
+            
+            /*if (collision(newx)) {
+                // Calculate first collision and reintegrate
+                double f; // Equation 3.2
+                timestep = f*timestep;
+                //snew = Integrate(s, s′, timestep);
+                //snew = CollisionResponse(snew);
+            }*/
+            timestep_remain -= timestep;
+            ball = newx;
+        }
+        n++;
+        t = n*h;
+    }
+    
     glutPostRedisplay();
 }
 
-void mouse(int button, int state, int x, int y)
-{
+void mouse(int button, int state, int x, int y) {
     switch (button) {
         case GLUT_LEFT_BUTTON:
             if (state == GLUT_DOWN) {
@@ -212,16 +280,12 @@ void mouse(int button, int state, int x, int y)
     }
 }
 
-void motion(int x, int y)
-{
+void motion(int x, int y) {
     xchange = x - lastx;
     ychange = y - lasty;
 }
 
-
-
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     GLint SubMenu1, SubMenu2, SubMenu3, SubMenu4;
     
     glutInit(&argc, argv);
