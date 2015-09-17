@@ -37,7 +37,7 @@ struct v3d{
     }
 };
 
-const int steps_per_frame = 100;
+const int steps_per_frame = 1000;
 
 v3d ball[steps_per_frame], ballv, gravity, wind; //The position of the ball - you can set this in your code
 double mass, windc, cr, mu;    // ball mass, wind coefficient, coefficient of restistuion, coefficient of friction
@@ -45,6 +45,7 @@ int radius;
 
 int reduceWiggle;
 enum restFlag { neither, low, high} xrest, yrest, zrest;
+double kick;
 
 double boxxl, boxxh, boxyl, boxyh, boxzl, boxzh;  // The low and high x, y, z values for the box sides
 
@@ -76,7 +77,7 @@ void display(void) {
     GLfloat box_diffuse[] = { 0.7, 0.7, 0.7 };
     GLfloat box_specular[] = { 0.1, 0.1, 0.1 };
     GLfloat box_shininess[] = { 1.0 };
-    GLfloat ball_ambient[] = { 0.4, 0.3, 0.0 };
+    GLfloat ball_ambient[] = { 0.4, 0.4, 0.0 };
     GLfloat ball_diffuse[] = { 0.3, 0.0, 0.0 };
     GLfloat ball_specular[] = { 0.3, 0.3, 0.3 };
     GLfloat ball_shininess[] = { 10.0 };
@@ -208,12 +209,15 @@ void init(void) {
     glLightfv(GL_LIGHT1, GL_SPECULAR, light1color);
     
     //Initialize ball position, velocity, gravity, and wind
-    radius = 5;
+    radius = 10;
     for (int i = 0; i < steps_per_frame; i++)
         ball[i] = { 0.0, 0.0, 0.0};
     ballv = { 500.0, 400.0, 120.0};
-    gravity = { 0.0, -196.2, 0.0};
-    wind = { 0.0, 0.0, -80.0};
+    
+    //gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 0.0;
+    gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 30.0;
+    //gravity = { 0.0, 0.0, 0.0}; wind = { 0.0, 0.0, 0.0}; windc = 1.0; cr = 1.0; mu = 0.0; kick = 0.0;
+    //gravity = { 0.0, 0.0, 0.0}; wind = { 0.0, 0.0, 0.0}; windc = 0.2; cr = 1.0; mu = 0.0; kick = 0.0;
     
     // initialize the ball trail
     ball_path.clear();
@@ -228,11 +232,8 @@ void init(void) {
     
     // set sphere properties
     mass = 3.0;
-    windc = 0.2;
-    cr = 0.95;
-    mu = 0.1;
-    
-    // somulation timing
+   
+    // simulation timing
     fps = 60.0;
     timestep = 1.0/(fps * steps_per_frame);
     
@@ -260,43 +261,43 @@ surface collision(const v3d newpos, const v3d last, double& lowest_f) {
     surface s = none;
     double current_f;
     lowest_f = 1.0;
-    if (newpos.x < (-100.0 + radius)) {
-        current_f = (-100.0 + radius - last.x)/(newpos.x - last.x);
+    if (newpos.x < (boxxl + radius)) {
+        current_f = (boxxl + radius - last.x)/(newpos.x - last.x);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = left;
         }
     }
-    if (newpos.x > (100.0 - radius)) {
-        current_f = (100.0 - radius - last.x)/(newpos.x - last.x);
+    if (newpos.x > (boxxh - radius)) {
+        current_f = (boxxh - radius - last.x)/(newpos.x - last.x);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = right;
         }
     }
-    if (newpos.y < (-100.0 + radius)) {
-        current_f = (-100.0 + radius - last.y)/(newpos.y - last.y);
+    if (newpos.y < (boxyl + radius)) {
+        current_f = (boxyl + radius - last.y)/(newpos.y - last.y);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = bottom;
         }
     }
-    if (newpos.y > (100.0 - radius)) {
-        current_f = (100.0 - radius - last.y)/(newpos.y - last.y);
+    if (newpos.y > (boxyh - radius)) {
+        current_f = (boxyh - radius - last.y)/(newpos.y - last.y);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = top;
         }
     }
-    if (newpos.z < (-100.0 + radius)) {
-        current_f = (-100.0 + radius - last.z)/(newpos.z - last.z);
+    if (newpos.z < (boxzl + radius)) {
+        current_f = (boxzl + radius - last.z)/(newpos.z - last.z);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = front;
         }
     }
-    if (newpos.z > (100.0 - radius)) {
-        current_f = (100.0 - radius - last.z)/(newpos.z - last.z);
+    if (newpos.z > (boxzh - radius)) {
+        current_f = (boxzh - radius - last.z)/(newpos.z - last.z);
         if (current_f < lowest_f){
             lowest_f = current_f;
             s = back;
@@ -334,8 +335,9 @@ v3d bounce(const v3d velocity, const v3d accel, const surface side) {
         case right:
             vx = - cr * velocity.x;
             if (signChange(vx, deltav.x) && reduceWiggle) {
-                vx = 0.0;
-                xrest = (side == left)? low : high;
+                vx = (side == bottom)? kick : -kick;
+                if (kick > 0.0)
+                    xrest = (side == left)? low : high;
             }
             
             vtangent = sqrt(velocity.y*velocity.y + velocity.z*velocity.z);
@@ -349,8 +351,9 @@ v3d bounce(const v3d velocity, const v3d accel, const surface side) {
         case top:
             vy = - cr * velocity.y;
             if (signChange(vy, deltav.y) && reduceWiggle) {
-                vy = 0.0;
-                yrest = (side == bottom)? low : high;
+                vy = (side == bottom)? kick : -kick;
+                if (kick > 0.0)
+                    yrest = (side == bottom)? low : high;
             }
             
             vtangent = sqrt(velocity.x*velocity.x + velocity.z*velocity.z);
@@ -364,8 +367,9 @@ v3d bounce(const v3d velocity, const v3d accel, const surface side) {
         case back:
             vz = - cr * velocity.z;
             if (signChange(vz, deltav.z) && reduceWiggle) {
-                vz = 0.0;
-                zrest = (side == front)? low : high;
+                vz = (side == bottom)? kick : -kick;
+                if (kick > 0.0)
+                    zrest = (side == front)? low : high;
             }
             
             vtangent = sqrt(velocity.x*velocity.x + velocity.y*velocity.y);
