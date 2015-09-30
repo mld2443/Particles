@@ -214,8 +214,8 @@ void init(void) {
         ball[i] = { 0.0, 0.0, 0.0};
     ballv = { 500.0, 400.0, 120.0};
     
-    //gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 0.0;
-    gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 30.0;
+    gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 0.0;
+    //gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 30.0;
     //gravity = { 0.0, 0.0, 0.0}; wind = { 0.0, 0.0, 0.0}; windc = 1.0; cr = 1.0; mu = 0.0; kick = 0.0;
     //gravity = { 0.0, 0.0, 0.0}; wind = { 0.0, 0.0, 0.0}; windc = 0.2; cr = 1.0; mu = 0.0; kick = 0.0;
     
@@ -343,8 +343,10 @@ v3d bounce(const v3d velocity, const v3d accel, const surface side) {
             vtangent = sqrt(velocity.y*velocity.y + velocity.z*velocity.z);
             friction = 1.0 - min(mu * abs(velocity.x), vtangent)/vtangent;
             
-            vy = velocity.y * friction;
-            vz = velocity.z * friction;
+            if (friction >= 0.0 && friction <= 1.0) {
+                vy = velocity.y * friction;
+                vz = velocity.z * friction;
+            }
             break;
             
         case bottom:
@@ -358,9 +360,11 @@ v3d bounce(const v3d velocity, const v3d accel, const surface side) {
             
             vtangent = sqrt(velocity.x*velocity.x + velocity.z*velocity.z);
             friction = 1.0 - min(mu * abs(velocity.y), vtangent)/vtangent;
-
-            vx = velocity.x * friction;
-            vz = velocity.z * friction;
+            
+            if (friction >= 0.0 && friction <= 1.0) {
+                vx = velocity.x * friction;
+                vz = velocity.z * friction;
+            }
             break;
             
         case front:
@@ -375,8 +379,10 @@ v3d bounce(const v3d velocity, const v3d accel, const surface side) {
             vtangent = sqrt(velocity.x*velocity.x + velocity.y*velocity.y);
             friction = 1.0 - min(mu * abs(velocity.z), vtangent)/vtangent;
 
-            vx = velocity.x * friction;
-            vy = velocity.y * friction;
+            if (friction >= 0.0 && friction <= 1.0) {
+                vx = velocity.x * friction;
+                vy = velocity.y * friction;
+            }
             break;
             
         default:
