@@ -5,21 +5,24 @@
 #include <math.h>
 #include <deque>
 #include "generator.h"
+
 using namespace std;
 
 const int steps_per_frame = 10;
 
-v3f wind;
+v3f gravity, wind;
 double windc, cr, mu;    // ball mass, wind coefficient, coefficient of restistuion, coefficient of friction
 
 double boxxl, boxxh, boxyl, boxyh, boxzl, boxzh;  // The low and high x, y, z values for the box sides
 double grndhght, ldepth, lwidth, rdepth, rwidth, bankwidth, treex, treez;
+float genheight, genradius;
 
 int rotateon;
+vector<generator> pgens;
 
 //double xmin, xmax, ymin, ymax, zmin, zmax;
 //double maxdiff;
-double fps, timestep;
+double fps, timestep, elapsed;
 GLUquadricObj *quadric;
 
 //unsigned int path_length;
@@ -227,18 +230,10 @@ void display(void) {
     draw_ground();
     draw_tree(treex, grndhght, treez);
     
-    generator gen(v3f(), v3f(1,0,0), 5, v3f(2,1,0), 0.0);
-    
-    glMaterialfv(GL_FRONT, GL_AMBIENT, bigrgb);
-    for (int i = 0; i < 1000; i++) {
-        v3f p = gen.g_pos_on_disc();
-        v3f v = gen.g_angle_to_disc();
-        glBegin(GL_LINE_STRIP);
-        glVertex3f(p.x, p.y, p.z);
-        glVertex3f(p.x + v.x, p.y + v.y, p.z + v.z);
-        glEnd();
+    for (auto &g : pgens) {
+        g.draw_particles();
     }
-    
+        
     glPopMatrix();
     glutSwapBuffers();
 }
@@ -262,10 +257,12 @@ void init(void) {
     gluLookAt(0, 225, 300, 0, 0, 0, 0, 1, 0);
     quadric = gluNewQuadric();
     
-    wind = { 20.0, 0.0, 0.0}; windc = 1.0;
+    gravity = { 0.0, 9.81, 0.0 };
+    wind = { 10.0, 0.0, 0.0}; windc = 0.1;
     
     // simulation timing
     fps = 60.0;
+    elapsed = 0.0;
     timestep = 1.0/(fps * steps_per_frame);
     
     //Initialize scene variables
@@ -283,6 +280,13 @@ void init(void) {
     bankwidth = 10;
     treex = 70;
     treez = 55;
+    genheight = 20;
+    genradius = 18;
+    
+    // invoke the generator(s)
+    generator g(v3f(boxxl,genheight,ldepth), v3f(1,0,0), genradius, v3f(6,3,1), 0.5, 15);
+    g.set_part_prop(15, 3, 2, 100);
+    pgens.push_back(g);
 }
 
 void reshapeFunc(GLint newWidth, GLint newHeight) {
@@ -297,41 +301,21 @@ void reshapeFunc(GLint newWidth, GLint newHeight) {
 void newFrame(const int id) {
     //glutTimerFunc(1000.0/fps, newFrame, 1);
     
-    double elapsed = 0.0;
     unsigned int step = 0;
-    //v3f last_ball = ball[steps_per_frame-1];
     
     while (step < steps_per_frame) {
         double time_remaining = timestep;
         double t_current = time_remaining;
         
-        while (time_remaining > 0.0) {
-            //v3f accel = getAccel();
-            //v3f newv = ballv + accel * t_current;
-            //v3f newpos = last_ball + (ballv + newv)/2 * t_current;
-            
-            double f;
-            //surface side;
-            //if ((side = collision(newpos, last_ball, f)))
-            {
-                t_current = f*t_current;
-                //newpos = last_ball + (ballv + newv)/2 * t_current;
-                //newv = bounce(newv, accel, side);
-            }
-            
-            time_remaining -= t_current;
-            //ballv = newv;
-            //ball[step] = newpos;
+        for (auto &g : pgens) {
+            g.spawn_particles(elapsed, timestep);
+            g.cull_particles(elapsed);
+            g.compute_accel(gravity, wind, windc);
         }
         
-        //last_ball = ball[step];
         step++;
         elapsed += timestep;
     }
-    
-    //ball_path.push_back(last_ball);
-    /*if (ball_path.size() >= path_length)
-        ball_path.pop_front();*/
     
     glutPostRedisplay();
 }

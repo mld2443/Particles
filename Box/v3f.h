@@ -24,6 +24,20 @@ public:
         return *this;
     }
     
+    v3f operator +=(const v3f& a) {
+        x += a.x;
+        y += a.y;
+        z += a.z;
+        return *this;
+    }
+    
+    v3f operator -=(const v3f& a) {
+        x -= a.x;
+        y -= a.y;
+        z -= a.z;
+        return *this;
+    }
+    
     v3f operator +(const v3f& a) const {
         return {x+a.x, y+a.y, z+a.z};
     }
