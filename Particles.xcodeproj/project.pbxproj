@@ -29,6 +29,8 @@
 		C946D56E1BA89AD90034D90F /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		C946D5751BA89AEB0034D90F /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
 		C946D5771BA89AF10034D90F /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = System/Library/Frameworks/GLUT.framework; sourceTree = SDKROOT; };
+		C9CCA0CA1BBC84490096F572 /* v3f.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = v3f.h; sourceTree = "<group>"; };
+		C9CCA0CB1BBCD0740096F572 /* generator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = generator.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,8 @@
 			isa = PBXGroup;
 			children = (
 				C946D56E1BA89AD90034D90F /* main.cpp */,
+				C9CCA0CA1BBC84490096F572 /* v3f.h */,
+				C9CCA0CB1BBCD0740096F572 /* generator.h */,
 			);
 			name = Particles;
 			path = Box;

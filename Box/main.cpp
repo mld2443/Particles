@@ -4,83 +4,215 @@
 #include <OpenGL/gl.h>
 #include <math.h>
 #include <deque>
+#include "generator.h"
 using namespace std;
 
-struct v3d{
-    double x,y,z;
-    
-    v3d& operator =(const v3d& a) {
-        x = a.x;
-        y = a.y;
-        z = a.z;
-        return *this;
-    }
-    
-    v3d operator +(const v3d& a) const {
-        return {x+a.x, y+a.y, z+a.z};
-    }
-    
-    v3d operator -(const v3d& a) const {
-        return {x-a.x, y-a.y, z-a.z};
-    }
-    
-    v3d operator *(const v3d& a) const {
-        return {x*a.x, y*a.y, z*a.z};
-    }
-    
-    v3d operator *(const double& a) const {
-        return {x*a, y*a, z*a};
-    }
-    
-    v3d operator /(const double& a) const {
-        return {x/a, y/a, z/a};
-    }
-};
+const int steps_per_frame = 10;
 
-const int steps_per_frame = 1000;
-
-v3d ball[steps_per_frame], ballv, gravity, wind; //The position of the ball - you can set this in your code
-double mass, windc, cr, mu;    // ball mass, wind coefficient, coefficient of restistuion, coefficient of friction
-int radius;
-
-int reduceWiggle;
-enum restFlag { neither, low, high} xrest, yrest, zrest;
-double kick;
+v3f wind;
+double windc, cr, mu;    // ball mass, wind coefficient, coefficient of restistuion, coefficient of friction
 
 double boxxl, boxxh, boxyl, boxyh, boxzl, boxzh;  // The low and high x, y, z values for the box sides
+double grndhght, ldepth, lwidth, rdepth, rwidth, bankwidth, treex, treez;
 
 int rotateon;
 
 //double xmin, xmax, ymin, ymax, zmin, zmax;
 //double maxdiff;
 double fps, timestep;
+GLUquadricObj *quadric;
 
-deque<v3d> ball_path;
-unsigned int path_length;
+//unsigned int path_length;
 
 int lastx, lasty;
 int xchange, ychange;
 float spin = 0.0;
 float spinup = 0.0;
 
-void display(void) {
+void draw_lights(void) {
+    // Set up lights
+    //GLfloat light0color[] = { 0.3, 0.1, 0.3 };
+    GLfloat light0color[] = { 1, 1, 1 };
+    GLfloat light0pos[] = { 500, 500, 0 };
+    GLfloat light1color[] = { 0.1, 0.05, 0.1 };
+    GLfloat light1pos[] = { 303, 300, 300 };
+    glLightfv(GL_LIGHT0, GL_POSITION, light0pos);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light0color);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0color);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light0color);
+    glLightfv(GL_LIGHT1, GL_POSITION, light1pos);
+    glLightfv(GL_LIGHT1, GL_AMBIENT, light1color);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1color);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, light1color);
+}
+
+void draw_box(void) {
+    //Draw the box
+    GLfloat littlergb[] = { 0.25, 0.25, 0.25 };
     GLfloat box_ambient[] = { 0.1, 0.1, 0.1 };
-    GLfloat smallr00[] = { 0.1, 0.0, 0.0 };
-    GLfloat small0g0[] = { 0.0, 0.1, 0.0 };
-    GLfloat small00b[] = { 0.0, 0.0, 0.1 };
-    GLfloat smallrg0[] = { 0.1, 0.1, 0.0 };
-    GLfloat smallr0b[] = { 0.1, 0.0, 0.1 };
-    GLfloat small0gb[] = { 0.0, 0.1, 0.1 };
-    GLfloat smallrgb[] = { 0.1, 0.1, 0.1 };
-    GLfloat bigrgb[] = { 1.0, 1.0, 1.0 };
-    
     GLfloat box_diffuse[] = { 0.7, 0.7, 0.7 };
     GLfloat box_specular[] = { 0.1, 0.1, 0.1 };
-    GLfloat box_shininess[] = { 1.0 };
-    GLfloat ball_ambient[] = { 0.4, 0.4, 0.0 };
-    GLfloat ball_diffuse[] = { 0.3, 0.0, 0.0 };
-    GLfloat ball_specular[] = { 0.3, 0.3, 0.3 };
-    GLfloat ball_shininess[] = { 10.0 };
+    GLfloat box_shininess[] = { 0.5 };
+    //set material parameters
+    glMaterialfv(GL_FRONT, GL_AMBIENT, box_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, box_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, box_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, box_shininess);
+    
+    glBegin(GL_LINE_STRIP);
+    //bottom face
+    glMaterialfv(GL_FRONT, GL_AMBIENT, littlergb);
+    glVertex3f(boxxh, boxyl, boxzh);
+    glVertex3f(boxxh, boxyl, boxzl);
+    glVertex3f(boxxl, boxyl, boxzl);
+    glVertex3f(boxxl, boxyl, boxzh);
+    glVertex3f(boxxh, boxyl, boxzh);
+    glEnd();
+    
+    glBegin(GL_LINE_STRIP);
+    //top face
+    glMaterialfv(GL_FRONT, GL_AMBIENT, littlergb);
+    glVertex3f(boxxh, boxyh, boxzh);
+    glVertex3f(boxxl, boxyh, boxzh);
+    glVertex3f(boxxl, boxyh, boxzl);
+    glVertex3f(boxxh, boxyh, boxzl);
+    glVertex3f(boxxh, boxyh, boxzh);
+    glEnd();
+    
+    glBegin(GL_LINE_STRIP);
+    //back left
+    glMaterialfv(GL_FRONT, GL_AMBIENT, littlergb);
+    glVertex3f(boxxl, boxyl, boxzl);
+    glVertex3f(boxxl, boxyh, boxzl);
+    glEnd();
+    
+    glBegin(GL_LINE_STRIP);
+    //back right
+    glMaterialfv(GL_FRONT, GL_AMBIENT, littlergb);
+    glVertex3f(boxxh, boxyl, boxzl);
+    glVertex3f(boxxh, boxyh, boxzl);
+    glEnd();
+    
+    glBegin(GL_LINE_STRIP);
+    //front right
+    glMaterialfv(GL_FRONT, GL_AMBIENT, littlergb);
+    glVertex3f(boxxh, boxyl, boxzh);
+    glVertex3f(boxxh, boxyh, boxzh);
+    glEnd();
+    
+    glBegin(GL_LINE_STRIP);
+    //front left
+    glMaterialfv(GL_FRONT, GL_AMBIENT, littlergb);
+    glVertex3f(boxxl, boxyl, boxzh);
+    glVertex3f(boxxl, boxyh, boxzh);
+    glEnd();
+}
+
+void draw_ground(void) {
+    GLfloat gnd_ambient[] = { 0.1, 0.15, 0.1 };
+    GLfloat gnd_diffuse[] = { 0.1, 0.15, 0.1 };
+    GLfloat gnd_specular[] = { 0.0, 0.15, 0.0 };
+    GLfloat gnd_shininess[] = { 1.0 };
+    
+    GLfloat water_ambient[] = { 0.1, 0.1, 0.15 };
+    GLfloat water_diffuse[] = { 0.0, 0.0, 0.3 };
+    GLfloat water_specular[] = { 0.0, 0.0, 0.3 };
+    GLfloat water_shininess[] = { 10.0 };
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, gnd_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, gnd_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, gnd_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, gnd_shininess);
+    
+    glBegin(GL_QUAD_STRIP);
+    glVertex3f(boxxl, grndhght, boxzh);
+    glVertex3f(boxxh, grndhght, boxzh);
+    
+    glVertex3f(boxxl, grndhght, ldepth + lwidth + bankwidth);
+    glVertex3f(boxxh, grndhght, rdepth + rwidth + bankwidth);
+    
+    glVertex3f(boxxl, boxyl, ldepth + lwidth);
+    glVertex3f(boxxh, boxyl, rdepth + rwidth);
+    glEnd();
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, water_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, water_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, water_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, water_shininess);
+    
+    glBegin(GL_QUADS);
+    glVertex3f(boxxl, boxyl, ldepth + lwidth);
+    glVertex3f(boxxh, boxyl, rdepth + rwidth);
+    glVertex3f(boxxh, boxyl, rdepth - rwidth);
+    glVertex3f(boxxl, boxyl, ldepth - lwidth);
+    glEnd();
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, gnd_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, gnd_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, gnd_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, gnd_shininess);
+    
+    glBegin(GL_QUAD_STRIP);
+    glVertex3f(boxxl, boxyl, ldepth - lwidth);
+    glVertex3f(boxxh, boxyl, rdepth - rwidth);
+    
+    glVertex3f(boxxl, grndhght, ldepth - lwidth - bankwidth);
+    glVertex3f(boxxh, grndhght, rdepth - rwidth - bankwidth);
+    
+    glVertex3f(boxxl, grndhght, boxzl);
+    glVertex3f(boxxh, grndhght, boxzl);
+    glEnd();
+}
+
+void draw_tree(const float x, const float y, const float z) {
+    GLfloat tree_ambient[] = { 0.05, 0.05, 0.05 };
+    GLfloat tree_diffuse[] = { 0.3, 0.3, 0.3 };
+    GLfloat tree_specular[] = { 0.3, 0.3, 0.3 };
+    GLfloat tree_shininess[] = { 1.0 };
+    
+    GLfloat leaf_ambient[] = { 0.05, 0.075, 0.05 };
+    GLfloat leaf_diffuse[] = { 0.1, 0.3, 0.1 };
+    GLfloat leaf_specular[] = { 0.1, 0.3, 0.1 };
+    GLfloat leaf_shininess[] = { 1.0 };
+    
+    glPushMatrix(); {
+        glTranslatef(x, y, z);
+        
+        glMaterialfv(GL_FRONT, GL_AMBIENT, tree_ambient);
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, tree_diffuse);
+        glMaterialfv(GL_FRONT, GL_SPECULAR, tree_specular);
+        glMaterialfv(GL_FRONT, GL_SHININESS, tree_shininess);
+        
+        glPushMatrix(); {
+            glRotatef(-90, 1, 0, 0);
+            gluCylinder(quadric, 20, 15, 60, 32, 32);
+            
+            glTranslatef(0, 0, 60);
+            gluCylinder(quadric, 15, 15, 100, 32, 32);
+        } glPopMatrix();
+    
+        glTranslatef(0, 160, 0);
+    
+        glMaterialfv(GL_FRONT, GL_AMBIENT, leaf_ambient);
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, leaf_diffuse);
+        glMaterialfv(GL_FRONT, GL_SPECULAR, leaf_specular);
+        glMaterialfv(GL_FRONT, GL_SHININESS, leaf_shininess);
+        
+        for (int i = 0; i < 360; i += 360/6) {
+            glPushMatrix(); {
+                glRotatef(i, 0, 1, 0);
+                glTranslatef(40, 0, 0);
+                glutSolidSphere(60, 64, 64);
+            } glPopMatrix();
+        }
+        glTranslatef(0, 40, 0);
+        glutSolidSphere(60, 64, 64);
+    
+    } glPopMatrix();
+}
+
+void display(void) {
+    GLfloat bigrgb[] = { 1.0, 1.0, 1.0 };
     
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
@@ -90,86 +222,21 @@ void display(void) {
     glRotatef(spinup, 1.0, 0.0, 0.0);
     glRotatef(spin, 0.0, 1.0, 0.0);
     
-    /*
-     8 vertices:
-     glVertex3f(boxxl, boxyl, boxzl);
-     glVertex3f(boxxh, boxyl, boxzl);
-     glVertex3f(boxxh, boxyh, boxzl);
-     glVertex3f(boxxl, boxyh, boxzl);
-     glVertex3f(boxxl, boxyl, boxzh);
-     glVertex3f(boxxh, boxyl, boxzh);
-     glVertex3f(boxxh, boxyh, boxzh);
-     glVertex3f(boxxl, boxyh, boxzh);
-     */
+    draw_lights();
+    draw_box();
+    draw_ground();
+    draw_tree(treex, grndhght, treez);
     
-    //Draw the box
-    //set material parameters
-    glMaterialfv(GL_FRONT, GL_AMBIENT, box_ambient);
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, box_diffuse);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, box_specular);
-    glMaterialfv(GL_FRONT, GL_SHININESS, box_shininess);
+    generator gen(v3f(), v3f(1,0,0), 5, v3f(2,1,0), 0.0);
     
-    glBegin(GL_QUADS);
-    //back face
-    glMaterialfv(GL_FRONT, GL_AMBIENT, smallrgb);
-    glVertex3f(boxxl, boxyl, boxzl);
-    glVertex3f(boxxh, boxyl, boxzl);
-    glVertex3f(boxxh, boxyh, boxzl);
-    glVertex3f(boxxl, boxyh, boxzl);
-    
-    //left face
-    glMaterialfv(GL_FRONT, GL_AMBIENT, small0g0);
-    glVertex3f(boxxl, boxyl, boxzh);
-    glVertex3f(boxxl, boxyl, boxzl);
-    glVertex3f(boxxl, boxyh, boxzl);
-    glVertex3f(boxxl, boxyh, boxzh);
-    
-    //right face
-    glMaterialfv(GL_FRONT, GL_AMBIENT, small00b);
-    glVertex3f(boxxh, boxyl, boxzh);
-    glVertex3f(boxxh, boxyh, boxzh);
-    glVertex3f(boxxh, boxyh, boxzl);
-    glVertex3f(boxxh, boxyl, boxzl);
-    
-    //bottom face
-    glMaterialfv(GL_FRONT, GL_AMBIENT, smallrg0);
-    glVertex3f(boxxh, boxyl, boxzh);
-    glVertex3f(boxxh, boxyl, boxzl);
-    glVertex3f(boxxl, boxyl, boxzl);
-    glVertex3f(boxxl, boxyl, boxzh);
-    
-    //top face
-    glMaterialfv(GL_FRONT, GL_AMBIENT, smallr0b);
-    glVertex3f(boxxh, boxyh, boxzh);
-    glVertex3f(boxxl, boxyh, boxzh);
-    glVertex3f(boxxl, boxyh, boxzl);
-    glVertex3f(boxxh, boxyh, boxzl);
-    
-    //front face
-    glMaterialfv(GL_FRONT, GL_AMBIENT, small0gb);
-    glVertex3f(boxxh, boxyl, boxzh);
-    glVertex3f(boxxl, boxyl, boxzh);
-    glVertex3f(boxxl, boxyh, boxzh);
-    glVertex3f(boxxh, boxyh, boxzh);
-    
-    glEnd();
-    
-    glBegin(GL_LINE_STRIP);
     glMaterialfv(GL_FRONT, GL_AMBIENT, bigrgb);
-    for (deque<v3d>::iterator it = ball_path.begin(); it != ball_path.end(); it++)
-        glVertex3f(it->x, it->y, it->z);
-    glEnd();
-    
-    //draw the ball
-    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, ball_ambient);
-    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, ball_diffuse);
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, ball_specular);
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, ball_shininess);
-    for (int i = 0; i < steps_per_frame; i++) {
-        glPushMatrix();
-        glTranslatef(ball[i].x, ball[i].y, ball[i].z);
-        glutSolidSphere(radius, 10, 10);
-        glPopMatrix();
+    for (int i = 0; i < 1000; i++) {
+        v3f p = gen.g_pos_on_disc();
+        v3f v = gen.g_angle_to_disc();
+        glBegin(GL_LINE_STRIP);
+        glVertex3f(p.x, p.y, p.z);
+        glVertex3f(p.x + v.x, p.y + v.y, p.z + v.z);
+        glEnd();
     }
     
     glPopMatrix();
@@ -193,57 +260,29 @@ void init(void) {
     
     // Set eye point and lookat point
     gluLookAt(0, 225, 300, 0, 0, 0, 0, 1, 0);
+    quadric = gluNewQuadric();
     
-    // Set up lights
-    GLfloat light0color[] = { 1.0, 1.0, 1.0 };
-    GLfloat light0pos[] = { 0, 500, 300 };
-    GLfloat light1color[] = { 1.0, 1.0, 1.0 };
-    GLfloat light1pos[] = { 300, 300, 300 };
-    glLightfv(GL_LIGHT0, GL_POSITION, light0pos);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light0color);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0color);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, light0color);
-    glLightfv(GL_LIGHT1, GL_POSITION, light1pos);
-    glLightfv(GL_LIGHT1, GL_AMBIENT, light1color);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1color);
-    glLightfv(GL_LIGHT1, GL_SPECULAR, light1color);
+    wind = { 20.0, 0.0, 0.0}; windc = 1.0;
     
-    //Initialize ball position, velocity, gravity, and wind
-    radius = 10;
-    for (int i = 0; i < steps_per_frame; i++)
-        ball[i] = { 0.0, 0.0, 0.0};
-    ballv = { 500.0, 400.0, 120.0};
-    
-    gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 0.0;
-    //gravity = { 0.0, -196.2, 0.0}; wind = { 0.0, 0.0, -80.0}; windc = 1.0; cr = 0.95; mu = 0.1; kick = 30.0;
-    //gravity = { 0.0, 0.0, 0.0}; wind = { 0.0, 0.0, 0.0}; windc = 1.0; cr = 1.0; mu = 0.0; kick = 0.0;
-    //gravity = { 0.0, 0.0, 0.0}; wind = { 0.0, 0.0, 0.0}; windc = 0.2; cr = 1.0; mu = 0.0; kick = 0.0;
-    
-    // initialize the ball trail
-    ball_path.clear();
-    ball_path.push_back(ball[steps_per_frame-1]);
-    path_length = 5000;
-    
-    // resting flags
-    reduceWiggle = true;
-    xrest = neither;
-    yrest = neither;
-    zrest = neither;
-    
-    // set sphere properties
-    mass = 3.0;
-   
     // simulation timing
     fps = 60.0;
     timestep = 1.0/(fps * steps_per_frame);
     
-    //Initialize box boundaries
+    //Initialize scene variables
     boxxl = -100;
     boxxh = 100;
     boxyl = -100;
     boxyh = 100;
     boxzl = -100;
     boxzh = 100;
+    grndhght = -90;
+    ldepth = -30;
+    lwidth = 10;
+    rdepth = -0;
+    rwidth = 20;
+    bankwidth = 10;
+    treex = 70;
+    treez = 55;
 }
 
 void reshapeFunc(GLint newWidth, GLint newHeight) {
@@ -255,212 +294,44 @@ void reshapeFunc(GLint newWidth, GLint newHeight) {
     glutPostRedisplay();
 }
 
-enum surface {none, left, right, bottom, top, front, back};
-
-surface collision(const v3d newpos, const v3d last, double& lowest_f) {
-    surface s = none;
-    double current_f;
-    lowest_f = 1.0;
-    if (newpos.x < (boxxl + radius)) {
-        current_f = (boxxl + radius - last.x)/(newpos.x - last.x);
-        if (current_f < lowest_f){
-            lowest_f = current_f;
-            s = left;
-        }
-    }
-    if (newpos.x > (boxxh - radius)) {
-        current_f = (boxxh - radius - last.x)/(newpos.x - last.x);
-        if (current_f < lowest_f){
-            lowest_f = current_f;
-            s = right;
-        }
-    }
-    if (newpos.y < (boxyl + radius)) {
-        current_f = (boxyl + radius - last.y)/(newpos.y - last.y);
-        if (current_f < lowest_f){
-            lowest_f = current_f;
-            s = bottom;
-        }
-    }
-    if (newpos.y > (boxyh - radius)) {
-        current_f = (boxyh - radius - last.y)/(newpos.y - last.y);
-        if (current_f < lowest_f){
-            lowest_f = current_f;
-            s = top;
-        }
-    }
-    if (newpos.z < (boxzl + radius)) {
-        current_f = (boxzl + radius - last.z)/(newpos.z - last.z);
-        if (current_f < lowest_f){
-            lowest_f = current_f;
-            s = front;
-        }
-    }
-    if (newpos.z > (boxzh - radius)) {
-        current_f = (boxzh - radius - last.z)/(newpos.z - last.z);
-        if (current_f < lowest_f){
-            lowest_f = current_f;
-            s = back;
-        }
-    }
-    return s;
-}
-
-double min(const double a, const double b) {
-    if (a < b)
-        return a;
-    return b;
-}
-
-double abs(const double a) {
-    if (a < 0.0)
-        return - a;
-    return a;
-}
-
-int signChange(const double a, const double b) {
-    if ((a + b) < 0 && a > 0)
-        return true;
-    if ((a + b) > 0 && a < 0)
-        return true;
-    return false;
-}
-
-v3d bounce(const v3d velocity, const v3d accel, const surface side) {
-    v3d deltav = accel * timestep;
-    double vx, vy, vz, vtangent, friction;
-    
-    switch (side) {
-        case left:
-        case right:
-            vx = - cr * velocity.x;
-            if (signChange(vx, deltav.x) && reduceWiggle) {
-                vx = (side == bottom)? kick : -kick;
-                if (kick > 0.0)
-                    xrest = (side == left)? low : high;
-            }
-            
-            vtangent = sqrt(velocity.y*velocity.y + velocity.z*velocity.z);
-            friction = 1.0 - min(mu * abs(velocity.x), vtangent)/vtangent;
-            
-            if (friction >= 0.0 && friction <= 1.0) {
-                vy = velocity.y * friction;
-                vz = velocity.z * friction;
-            }
-            break;
-            
-        case bottom:
-        case top:
-            vy = - cr * velocity.y;
-            if (signChange(vy, deltav.y) && reduceWiggle) {
-                vy = (side == bottom)? kick : -kick;
-                if (kick > 0.0)
-                    yrest = (side == bottom)? low : high;
-            }
-            
-            vtangent = sqrt(velocity.x*velocity.x + velocity.z*velocity.z);
-            friction = 1.0 - min(mu * abs(velocity.y), vtangent)/vtangent;
-            
-            if (friction >= 0.0 && friction <= 1.0) {
-                vx = velocity.x * friction;
-                vz = velocity.z * friction;
-            }
-            break;
-            
-        case front:
-        case back:
-            vz = - cr * velocity.z;
-            if (signChange(vz, deltav.z) && reduceWiggle) {
-                vz = (side == bottom)? kick : -kick;
-                if (kick > 0.0)
-                    zrest = (side == front)? low : high;
-            }
-            
-            vtangent = sqrt(velocity.x*velocity.x + velocity.y*velocity.y);
-            friction = 1.0 - min(mu * abs(velocity.z), vtangent)/vtangent;
-
-            if (friction >= 0.0 && friction <= 1.0) {
-                vx = velocity.x * friction;
-                vy = velocity.y * friction;
-            }
-            break;
-            
-        default:
-            break;
-    }
-    return {vx, vy, vz};
-}
-
-double max(const double a, const double b) {
-    if (a > b)
-        return a;
-    return b;
-}
-
-v3d getAccel() {
-    v3d a = gravity + ((wind - ballv) * (windc/mass));
-    
-    if (reduceWiggle) {
-        if ((xrest == low && a.x < 0.0) || (xrest == high && a.x > 0.0)) {
-            a.x = 0.0;
-            a.y *= max(1-mu, 0.0);
-            a.z *= max(1-mu, 0.0);
-        } else if (xrest)
-            xrest = neither;
-        if ((yrest == low && a.y < 0.0) || (yrest == high && a.y > 0.0)) {
-            a.x *= max(1-mu, 0.0);
-            a.y = 0.0;
-            a.z *= max(1-mu, 0.0);
-        } else if (yrest)
-            yrest = neither;
-        if ((zrest == low && a.z < 0.0) || (zrest == high && a.z > 0.0)) {
-            a.x *= max(1-mu, 0.0);
-            a.y *= max(1-mu, 0.0);
-            a.z = 0.0;
-        } else if (zrest)
-            zrest = neither;
-    }
-
-    return a;
-}
-
 void newFrame(const int id) {
-    glutTimerFunc(1000.0/fps, newFrame, 1);
+    //glutTimerFunc(1000.0/fps, newFrame, 1);
     
     double elapsed = 0.0;
     unsigned int step = 0;
-    v3d last_ball = ball[steps_per_frame-1];
+    //v3f last_ball = ball[steps_per_frame-1];
     
     while (step < steps_per_frame) {
         double time_remaining = timestep;
         double t_current = time_remaining;
         
         while (time_remaining > 0.0) {
-            v3d accel = getAccel();
-            v3d newv = ballv + accel * t_current;
-            v3d newpos = last_ball + (ballv + newv)/2 * t_current;
+            //v3f accel = getAccel();
+            //v3f newv = ballv + accel * t_current;
+            //v3f newpos = last_ball + (ballv + newv)/2 * t_current;
             
             double f;
-            surface side;
-            if ((side = collision(newpos, last_ball, f))) {
+            //surface side;
+            //if ((side = collision(newpos, last_ball, f)))
+            {
                 t_current = f*t_current;
-                newpos = last_ball + (ballv + newv)/2 * t_current;
-                newv = bounce(newv, accel, side);
+                //newpos = last_ball + (ballv + newv)/2 * t_current;
+                //newv = bounce(newv, accel, side);
             }
             
             time_remaining -= t_current;
-            ballv = newv;
-            ball[step] = newpos;
+            //ballv = newv;
+            //ball[step] = newpos;
         }
         
-        last_ball = ball[step];
+        //last_ball = ball[step];
         step++;
         elapsed += timestep;
     }
     
-    ball_path.push_back(last_ball);
-    if (ball_path.size() >= path_length)
-        ball_path.pop_front();
+    //ball_path.push_back(last_ball);
+    /*if (ball_path.size() >= path_length)
+        ball_path.pop_front();*/
     
     glutPostRedisplay();
 }
@@ -505,20 +376,29 @@ void motion(int x, int y) {
     ychange = y - lasty;
 }
 
+void key(unsigned char c, int x, int y) {
+    switch (c) {
+        case ' ':
+            break;
+            
+        default:
+            break;
+    }
+}
+
 int main(int argc, char** argv) {
-    GLint SubMenu1, SubMenu2, SubMenu3, SubMenu4;
-    
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(500, 500);
-    glutInitWindowPosition(100, 100);
+    glutInitWindowPosition(50, 50);
     glutCreateWindow("Ball in Cube Demo");
     init();
     rotateon = 0;
     glutDisplayFunc(display);
     glutMouseFunc(mouse);
     glutMotionFunc(motion);
-    glutTimerFunc(1000.0/fps, newFrame, 0);
+    glutKeyboardFunc(key);
+    //glutTimerFunc(1000.0/fps, newFrame, 0);
     glutIdleFunc(rotateview);
     glutReshapeFunc(reshapeFunc);
     
