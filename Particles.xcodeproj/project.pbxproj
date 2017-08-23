@@ -33,6 +33,7 @@
 		C9CCA0CB1BBCD0740096F572 /* generator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = generator.h; sourceTree = "<group>"; };
 		C9CCA0CC1BBD01AB0096F572 /* particle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = particle.h; sourceTree = "<group>"; };
 		C9CCA0CD1BBD0A380096F572 /* particlelist.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = particlelist.h; sourceTree = "<group>"; };
+		C9CCA0CE1BBD5A7F0096F572 /* quad.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = quad.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,6 +75,7 @@
 				C9CCA0CB1BBCD0740096F572 /* generator.h */,
 				C9CCA0CC1BBD01AB0096F572 /* particle.h */,
 				C9CCA0CD1BBD0A380096F572 /* particlelist.h */,
+				C9CCA0CE1BBD5A7F0096F572 /* quad.h */,
 			);
 			name = Particles;
 			path = Box;

@@ -1,10 +1,3 @@
-//
-//  generator.h
-//  Particles
-//
-//  Created by Matthew Dillard on 9/30/15.
-//  Copyright © 2015 Matthew Dillard. All rights reserved.
-//
 
 #ifndef generator_h
 #define generator_h
@@ -18,7 +11,7 @@
 class generator {
 private:
     std::default_random_engine rand;
-    v3f center, normal, w;
+    v3f center, normal, w, attract;
     float radius, delta;
     v3f w1, w2, w3;
     v3f n1, n2, n3;
@@ -27,6 +20,7 @@ private:
     bool areatype, vectortype;
     float p_speed;
     unsigned int blink_on, blink_off, pps;
+    GLenum light;
     
     v3f WdotV(const v3f v) {
         return {(w1.x*v.x + w2.x*v.y + w3.x*v.z), (w1.y*v.x + w2.y*v.y + w3.y*v.z), (w1.z*v.x + w2.z*v.y + w3.z*v.z)};
@@ -103,9 +97,9 @@ private:
         else
             v = Dg();
         
-        p = p + v * f * p_speed;
+        p = center + p + v * f * p_speed;
         
-        return particle(p, v, t, blink_on, blink_off, true);
+        return particle(p, v * p_speed, t, blink_on, blink_off, true);
     }
     
 public:
@@ -125,36 +119,57 @@ public:
         n1 = (a.cross(n3)).normalize();
         n2 = n3.cross(n1);
         
-        list = particlelist(old_age, m, 2000);
+        list = particlelist(old_age, m, 10000);
     }
     
-    void set_part_prop(const float speed, const unsigned int b_on, const unsigned int b_off, const unsigned int ptspersec) {
+    void set_part_prop(const float speed, const unsigned int b_on, const unsigned int b_off, const unsigned int ptspersec, const GLenum l, const v3f& attr = v3f()) {
         p_speed = speed;
         blink_on = b_on;
         blink_off = b_off;
         pps = ptspersec;
+        light = l;
+        attract = attr;
     }
     
     void spawn_particles(const float t, const float elapsed) {
         int number = pps * elapsed;
+        if(!number)
+            number = 1;
         
-        for (int i = 0; i < number; i++) {
+        for (int i = 0; i < number; i++)
             list.addparticle(gen_particle(t));
+    }
+    
+    void set_pps(const unsigned int p) {
+        pps = p;
+    }
+    
+    void cull_particles(const float t, const float xl, const float xh, const float zl, const float zh) {
+        list.cull_particles(t, xl, xh, zl, zh);
+    }
+    
+    void compute_accel(const v3f& g, const v3f& w, const float wc, const float c = 0.0){
+        list.compute_accel(g, w, wc, attract, c);
+    }
+    
+    void integrate(const float timestep, const vector<quad>& planes) { list.integrate(timestep, planes); }
+    
+    void draw_particles(const float t) {
+        list.draw_particles(t);
+        
+        if (list.visible(t)) {
+            glEnable(light);
+            v3f m = list.get_midpoint(t);
+            
+            GLfloat lightcolor[] = { 0.15, 0.15, 0.025 };
+            GLfloat lightpos[] = { m.x, m.y, m.z };
+            glLightfv(light, GL_POSITION, lightpos);
+            glLightfv(light, GL_AMBIENT, lightcolor);
+            glLightfv(light, GL_DIFFUSE, lightcolor);
+            glLightfv(light, GL_SPECULAR, lightcolor);
         }
-    }
-    
-    void cull_particles(const float t) {
-        list.cull_particles(t);
-    }
-    
-    void compute_accel(const v3f& g, const v3f& w, const float wc){
-        list.compute_accel(g, w, wc);
-    }
-    
-    void integrate(const float t) { list.integrate(t); }
-    
-    void draw_particles() {
-        list.draw_particles();
+        else
+            glDisable(light);
     }
 };
 

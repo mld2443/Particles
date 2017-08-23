@@ -1,10 +1,3 @@
-//
-//  v3f.h
-//  Particles
-//
-//  Created by Matthew Dillard on 9/30/15.
-//  Copyright © 2015 Matthew Dillard. All rights reserved.
-//
 
 #ifndef v3f_h
 #define v3f_h
@@ -73,6 +66,10 @@ public:
     
     v3f cross(const v3f& a) {
         return {y*a.z - z*a.y, z*a.x - x*a.z, x*a.y - y*a.x};
+    }
+    
+    bool operator ==(const v3f& v) const {
+        return (x == v.x && y == v.y && z == v.z);
     }
 };
 
